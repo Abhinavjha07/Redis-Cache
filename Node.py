@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta
+from sortedcontainers import SortedList
 
 class Node:
     def __init__(self, key, value, exp_time = 600):
@@ -15,10 +16,12 @@ class Node:
 class ListNode:
     def __init__(self, key, value, score = 0):
         self.key = key
-        self.values = []
-        self.values.append((score, value))
+        self.values = SortedList()
+        self.values.add(score)
         self.index_map = {}
+        self.value_map = {}
         self.index_map[value] = 0
+        self.value_map[0] = value
         self.prev = None
         self.next = None
     

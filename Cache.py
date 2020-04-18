@@ -1,6 +1,8 @@
 from Node import Node, ListNode
 from datetime import datetime, timedelta
 import bisect
+from sortedcontainers import SortedList
+import pickle
 
 class Cache(object):
     def __init__(self):
@@ -8,6 +10,23 @@ class Cache(object):
         self.list_hash_map = {}
         self.head = None
         self.end = None
+
+    def save(self, filename):
+        data = {
+            "hash_map" : self.hash_map,
+            "list_hash_map": self.list_hash_map,
+            "head": self.head,
+            "end": self.end
+        }
+
+        with open(filename, 'wb') as f:
+            pickle.dump(data, f)
+
+    def set_data(self, hash_map, list_hash_map, head, end):
+        self.hash_map = hash_map
+        self.list_hash_map = list_hash_map
+        self.head = head
+        self.end = end
 
     def remove(self, node):
 
@@ -53,8 +72,22 @@ class Cache(object):
 
         if self.isExpired(node):
             self.delete_node(key)
+            return "(nil)"
         else:
-            return self.hash_map[key]
+            return self.hash_map[key].value
+
+    def insert(self, key, value, expire):
+        if key in self.hash_map:
+            node = self.hash_map[key]
+            node.expire_time = datetime.now() + timedelta(seconds= expire)
+            node.value = value
+            return "OK"
+        else:
+            node = Node(key, value, expire)
+            self.set_head(node)
+            self.hash_map[key] = node
+            return "OK"
+
 
     def set(self, key, value, attributes = None):
         print(attributes)
@@ -92,10 +125,17 @@ class Cache(object):
                 else:
                     node = self.hash_map[key]
                     if self.isExpired(node):
+                        node.expire_time = datetime.now() + timedelta(seconds= expire)
                         node.value = value
                         return "OK"
                 
                 return "NULL"
+            else:
+                return "Unrecognized type!!"
+
+        else:
+            self.insert(key, value,expire)
+            return "OK"
 
 
     def set_expire(self, key, expire_time):
@@ -113,13 +153,13 @@ class Cache(object):
 
     def get_TTL(self, key):
         if key not in self.hash_map:
-            return -1
+            return -2
         else:
             node = self.hash_map[key]
             if self.isExpired(node):
                 self.delete_node(key)
 
-                return -1
+                return -2
 
             time_remaining = node.expire_time - datetime.now()
 
@@ -136,15 +176,19 @@ class Cache(object):
             for score, value in values:
                 if value in node.index_map:
                     node.values.pop(node.index_map[value])
-                    node.index_map[value] = bisect.bisect((score, value))
-                    bisect.insort(node.values, (score, value))
+                    del node.value_map[node.index_map[value]]
+                    node.index_map[value] = bisect.bisect(node.values, score)
+                    node.values.add(score)
+                    node.value_map[node.index_map[value]] = value
 
             return 0
 
         elif type == "NX":
             if key not in self.list_hash_map:
                 node = ListNode(key, '',0)
-                node.values = []
+                node.values = SortedList()
+                node.index_map = {}
+                node.value_map = {}
                 self.list_hash_map[key] = node
             else:
                 node = self.list_hash_map[key]
@@ -153,8 +197,11 @@ class Cache(object):
                 if value not in node.index_map:
                     if(len(node.values) == 0):
                         self.set_head(node)
-                    node.index_map[value] = bisect.bisect(node.values,(score, value))
-                    bisect.insort(node.values, (score, value))
+
+                    del node.value_map[node.index_map[value]]
+                    node.index_map[value] = bisect.bisect(node.values, score)
+                    node.values.add(score)
+                    node.value_map[node.index_map[value]] = value
                     ans += 1
             
 
@@ -163,21 +210,25 @@ class Cache(object):
         else:
             if key not in self.list_hash_map:
                 node = ListNode(key, '',0)
-                node.values = []
+                node.values = SortedList()
+                node.index_map = {}
+                node.value_map = {}
                 self.list_hash_map[key] = node
             else:
                 node = self.list_hash_map[key]
             ans = 0
             for score, value in values:
                 if value in node.index_map:
+                    del node.value_map[node.index_map[value]]
                     node.values.pop(node.index_map[value])
                 else:
                     if(len(node.values) == 0):
                         self.set_head(node)
                     ans += 1
                 
-                node.index_map[value] = bisect.bisect(node.values,(score, value))
-                bisect.insort(node.values, (score, value))
+                node.index_map[value] = bisect.bisect(node.values, score)
+                node.value_map[node.index_map[value]] = value
+                node.values.add(score)
             
             return ans
 
@@ -188,8 +239,79 @@ class Cache(object):
 
         node = self.list_hash_map[key]
         if value in node.index_map:
-            return node.values[node.index_map[value]][0]
-        return -1
+            return node.values[node.index_map[value]]
+        return "(nil)"
+
+    # def all_node(self):
+    #     node = self.head
+    #     while node != None:
+    #         print(node)
+    #         node = node.next
+
+    
+    def ZRANGE(self, key, l, r, withScore = False):
+        if key not in self.list_hash_map:
+            return "(nil)"
+
+        node = self.list_hash_map[key]
+        res = []
+        if l < 0:
+            l = len(node.values) + l 
+        if r < 0:
+            r = len(node.values) + r + 1
+
+        
+
+        for i in range(l, r):
+            res.append(node.value_map[i])
+            if withScore:
+                res.append(node.values[i])
+
+        return res
+
+
+    def DEL(self, keys):
+        ans = 0
+        for key in keys:
+            if key in self.hash_map:
+                if self.delete_node(key) == 1:
+                    ans += 1
+
+        
+        return ans
+
+
+    def GETSET(self, key, value):
+        if key not in self.hash_map:
+            return "(nil)"
+
+        node = self.hash_map[key]
+        ans = node.value
+        if self.isExpired(node):
+            self.delete_node(key)
+            return "(nil)"
+        else:
+            node.value = value
+        return ans
+
+    def MSET(self, pairs):
+        for key, value in pairs:
+            if key in self.hash_map:
+                
+                node = self.hash_map[key]
+                node.value = value
+                node.expire_time = datetime.now() + timedelta(seconds=600)
+            else:
+                node = Node(key, value)
+                self.set_head(node)
+                self.hash_map[key] = node
+
+        return "OK"
+
+
+        
+            
+
 
                 
 
