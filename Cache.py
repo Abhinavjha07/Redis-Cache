@@ -239,14 +239,8 @@ class Cache(object):
 
         node = self.list_hash_map[key]
         if value in node.index_map:
-            return node.values[node.index_map[value]]
+            return node.index_map[value]
         return "(nil)"
-
-    # def all_node(self):
-    #     node = self.head
-    #     while node != None:
-    #         print(node)
-    #         node = node.next
 
     
     def ZRANGE(self, key, l, r, withScore = False):
@@ -307,6 +301,22 @@ class Cache(object):
                 self.hash_map[key] = node
 
         return "OK"
+
+    def MGET(self, keys):
+        ans = []
+        for key in keys:
+            if key in self.hash_map:
+                node = self.hash_map[key]
+                if self.isExpired(node):
+                    self.delete_node(key)
+                    ans.append("(NIL)")
+                else:
+                    ans.append(node.value)
+
+            else:
+                ans.append("(NIL)")
+
+        return ans
 
 
         

@@ -107,7 +107,7 @@ while True:
             
             print(cache.DEL(keys))
 
-        elif opion == "GETSET":
+        elif option == "GETSET":
             if len(command) > 2:
                 print("ERR ERR wrong number of arguments for 'getset' command")
                 continue
@@ -125,6 +125,14 @@ while True:
                 pair.append((command[i], command[i+1]))
 
             print(cache.MSET(pair))
+
+        elif option == "MGET":
+            keys = []
+            for key in command:
+                keys.append(key)
+
+            print(cache.MGET(keys))
+
             
     except:
         print('Error occured!! please recheck the command.')
